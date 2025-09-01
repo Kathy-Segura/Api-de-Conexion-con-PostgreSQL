@@ -23,14 +23,14 @@ Está construida en **Python + FastAPI** y documentada automáticamente con **Sw
    cd api-plataforma-climatica
 
 ### 2. Crea un entorno virtual e instala dependencias:
-
-   2.1 python -m venv venv
-   2.2 source venv/bin/activate  # Linux/Mac
-   2.3 venv\Scripts\activate     # Windows
-   2.4 pip install -r requirements.txt
+```bash
+  # python -m venv venv
+  # source venv/bin/activate  # Linux/Mac
+  # venv\Scripts\activate     # Windows
+  # pip install -r requirements.txt
 
 ### 3. Configura las variables de entorno en un archivo .env:
-   DATABASE_URL=postgresql://usuario:password@localhost:5432/mi_bd
+  # DATABASE_URL=postgresql://usuario:password@localhost:5432/mi_bd
 
 ### 4. Ejecuta el servidor:
-   uvicorn main:app --reload
+  # uvicorn main:app --reload
