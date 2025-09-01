@@ -1,0 +1,48 @@
+# --- Archivos y carpetas de Python ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.db
+*.sqlite3
+
+# --- Entornos virtuales ---
+venv/
+.env
+
+# --- Archivos de configuración sensibles ---
+*.env
+.env.*
+
+# --- Archivos de logs ---
+*.log
+logs/
+
+# --- Archivos temporales ---
+*.tmp
+*.swp
+*.swo
+
+# --- Archivos de editor/IDE ---
+.vscode/
+.idea/
+*.iml
+
+# --- Archivos de sistema ---
+.DS_Store
+Thumbs.db
+
+# --- Docker ---
+*.pid
+*.seed
+*.cover
+*.bak
+*.orig
+
+# --- Archivos de despliegue ---
+/dist/
+/build/
+/*.egg-info/
+
+# --- Render/Heroku ---
+*.local
