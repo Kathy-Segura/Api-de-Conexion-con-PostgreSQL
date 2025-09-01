@@ -18,19 +18,18 @@ Está construida en **Python + FastAPI** y documentada automáticamente con **Sw
 ## 🚀 Instalación y ejecución
 
 ### 1. Clona el repositorio:
-   
    git clone https://github.com/usuario/api-plataforma-climatica.git
    cd api-plataforma-climatica
 
-### 2. Crea un entorno virtual e instala dependencias:
-```bash
-  # python -m venv venv
-  # source venv/bin/activate  # Linux/Mac
-  # venv\Scripts\activate     # Windows
-  # pip install -r requirements.txt
+### 2. Crea un entorno virtual e instalar dependencias:
+   `python -m venv venv`
+   
+   `venv\Scripts\activate`
+   
+   `pip install -r requirements.txt`
 
 ### 3. Configura las variables de entorno en un archivo .env:
-  # DATABASE_URL=postgresql://usuario:password@localhost:5432/mi_bd
+   `DATABASE_URL=postgresql://usuario:password@localhost:5432/mi_bd`
 
 ### 4. Ejecuta el servidor:
-  # uvicorn main:app --reload
+   `uvicorn main:app --reload`
