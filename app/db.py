@@ -1,5 +1,6 @@
 import os
 import ssl
+import asyncio
 from typing import Optional
 from contextlib import asynccontextmanager
 
@@ -16,36 +17,48 @@ DB_SSL_MODE = os.getenv("DB_SSL_MODE", "require").lower()
 
 pool: Optional[asyncpg.pool.Pool] = None
 
+
 def _build_ssl_context():
     """
     Neon requiere TLS. asyncpg no entiende 'sslmode' en el DSN,
     así que construimos un SSLContext explícito.
     """
     if DB_SSL_MODE in ("disable", "off", "false", "0"):
-        return False  # Sólo para entornos de desarrollo local
+        return False  
     # verify-ca/verify-full -> validación de certs; default context ya valida CAs del sistema
     ctx = ssl.create_default_context()
-    # Si quisieras 'allow' podrías relajar, pero NO recomendado con Neon
     return ctx
 
-async def init_db_pool():
-    """Inicializa el pool de conexiones."""
+
+async def init_db_pool(retries: int = 3, delay: int = 2):
+    """Inicializa el pool de conexiones con reintentos."""
     global pool
     if not DATABASE_URL:
         raise RuntimeError("DATABASE_URL no está definido en el .env")
 
     if pool is None:
         ssl_ctx = _build_ssl_context()
-        pool = await asyncpg.create_pool(
-            dsn=DATABASE_URL,
-            min_size=DB_POOL_MIN,
-            max_size=DB_POOL_MAX,
-            command_timeout=DB_TIMEOUT,
-            ssl=ssl_ctx,
-        )
-        # Smoke test inicial (opcional)
-        async with pool.acquire() as conn:
-            await conn.fetchval("SELECT 1")
+
+        for attempt in range(retries):
+            try:
+                pool = await asyncpg.create_pool(
+                    dsn=DATABASE_URL,
+                    min_size=DB_POOL_MIN,
+                    max_size=DB_POOL_MAX,
+                    command_timeout=DB_TIMEOUT,
+                    timeout=30,  # tiempo máximo para conexión inicial
+                    ssl=ssl_ctx,
+                )
+                # Smoke test inicial
+                async with pool.acquire() as conn:
+                    await conn.fetchval("SELECT 1")
+                break  # conexión OK, salir del bucle
+            except Exception as e:
+                if attempt < retries - 1:
+                    await asyncio.sleep(delay)
+                else:
+                    raise e
+
 
 async def close_db_pool():
     """Cierra el pool de conexiones."""
@@ -53,6 +66,7 @@ async def close_db_pool():
     if pool:
         await pool.close()
         pool = None
+
 
 @asynccontextmanager
 async def acquire():
