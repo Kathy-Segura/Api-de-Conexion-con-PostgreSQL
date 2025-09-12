@@ -53,15 +53,17 @@ async def init_db_pool(retries: int = 3, delay: int = 2):
                 )
                 # Smoke test inicial
                 async with pool.acquire() as conn:
-                    await conn.fetchval("SELECT 1")
+                   val = await conn.fetchval("SELECT schema_name FROM information_schema.schemata WHERE schema_name='sensor'")
+                   print("Existe schema sensor?", val)
                 break  # conexión OK, salir del bucle
+            
             except Exception as e:
                 if attempt < retries - 1:
                     await asyncio.sleep(delay)
                 else:
                     raise e
-
-
+                
+                
 async def close_db_pool():
     """Cierra el pool de conexiones."""
     global pool
