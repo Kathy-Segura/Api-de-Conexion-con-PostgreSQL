@@ -31,7 +31,7 @@ def _build_ssl_context():
 
 
 async def init_db_pool(retries: int = 3, delay: int = 2):
-    """Inicializa el pool de conexiones con reintentos."""
+    """Inicializa el pool de conexiones con reintentos y setea el schema por defecto."""
     global pool
     if not DATABASE_URL:
         raise RuntimeError("DATABASE_URL no está definido en el .env")
@@ -48,6 +48,8 @@ async def init_db_pool(retries: int = 3, delay: int = 2):
                     command_timeout=DB_TIMEOUT,
                     timeout=30,  # tiempo máximo para conexión inicial
                     ssl=ssl_ctx,
+                    # Aquí agregamos la inicialización de search_path
+                    init=lambda conn: conn.execute('SET search_path TO sensor')
                 )
                 # Smoke test inicial
                 async with pool.acquire() as conn:

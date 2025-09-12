@@ -34,14 +34,19 @@ async def health():
         # No exponemos detalles internos en producción
         raise HTTPException(status_code=500, detail="DB check failed")
 
+
 @app.post("/devices", status_code=201)
 async def create_device(device: schemas.DeviceCreate):
-    device_id = await models.upsert_dispositivo(
-        device.serie, device.nombre, device.ubicacion, device.tipo,
-        device.firmware, device.configuracion
-    )
-    return {"dispositivoid": device_id}
-
+    try:
+        device_id = await models.upsert_dispositivo(
+            device.serie, device.nombre, device.ubicacion,
+            device.tipo, device.firmware, device.configuracion
+        )
+        return {"dispositivoid": device_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
+    
+    
 @app.post("/sensors", status_code=201)
 async def create_sensor(sensor: schemas.SensorCreate):
     sensor_id = await models.upsert_sensor(
