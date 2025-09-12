@@ -1,7 +1,7 @@
 import os
 from datetime import datetime, timedelta
 from typing import Optional, List
-import uvicorn
+import uvicorn, json
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.responses import StreamingResponse, RedirectResponse
 from app.db import init_db_pool, close_db_pool, acquire
@@ -46,7 +46,28 @@ async def create_device(device: schemas.DeviceCreate):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
     
-    
+
+
+@app.post("/devices", status_code=201)
+async def create_device(device: schemas.DeviceCreate):
+    try:
+        # Convertimos el dict a JSON string
+        configuracion_json = json.dumps(device.configuracion) if device.configuracion else None
+
+        device_id = await models.upsert_dispositivo(
+            device.serie,
+            device.nombre,
+            device.ubicacion,
+            device.tipo,
+            device.firmware,
+            configuracion_json  # <-- enviamos string
+        )
+        return {"dispositivoid": device_id}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
+
+
 @app.post("/sensors", status_code=201)
 async def create_sensor(sensor: schemas.SensorCreate):
     sensor_id = await models.upsert_sensor(
