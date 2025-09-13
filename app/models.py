@@ -75,15 +75,41 @@ async def upsert_sensor(
 #_----------------------------------------------------------------------------------------------- 
 #_----------------------------------------------------------------------------------------------- 
 
+async def export_lecturas(limit: int = 10000, offset: int = 0):
+    async with acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT 
+                LecturaID,
+                DispositivoID,
+                SensorID,
+                FechaHora,
+                Valor,
+                Calidad,
+                RawRow,
+                InsertedAt
+            FROM sensor.Lecturas
+            ORDER BY FechaHora DESC
+            LIMIT $1 OFFSET $2
+            """,
+            limit,
+            offset
+        )
+        return [dict(r) for r in rows]
+
+#_----------------------------------------------------------------------------------------------- 
+#_----------------------------------------------------------------------------------------------- 
+#_----------------------------------------------------------------------------------------------- 
+
 async def get_chart_data(dispositivoid:Optional[int], sensornombre:Optional[str], desde, hasta, bucket: str='hour'):
     async with acquire() as conn:
         rows = await conn.fetch("SELECT * FROM sensor.sp_getchartdata($1,$2,$3,$4,$5)", dispositivoid, sensornombre, desde, hasta, bucket)
         return [dict(r) for r in rows]
 
-async def export_lecturas(limit:int=10000, offset:int=0):
-    async with acquire() as conn:
-        rows = await conn.fetch("SELECT LecturaID, FechaHora, Valor, Calidad, DispositivoID, SensorID FROM sensor.Lecturas ORDER BY FechaHora DESC LIMIT $1 OFFSET $2", limit, offset)
-        return [dict(r) for r in rows]
+#async def export_lecturas(limit:int=10000, offset:int=0):
+#    async with acquire() as conn:
+#        rows = await conn.fetch("SELECT LecturaID, FechaHora, Valor, Calidad, DispositivoID, SensorID FROM sensor.Lecturas ORDER BY FechaHora DESC LIMIT $1 OFFSET $2", limit, offset)
+#        return [dict(r) for r in rows]
 
 
 #Funcion ara realizar el insert por medio de los procedures en la BD con SP

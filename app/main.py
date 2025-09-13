@@ -76,22 +76,27 @@ async def insert_lecturas_batch(
     lecturas: List[schemas.LecturaCreate],
     background_tasks: BackgroundTasks
 ):
-    # Inserción bulk en staging
     async with acquire() as conn:
         await conn.executemany(
             """
-            INSERT INTO sensor.Staging_Lecturas
-            (Serie, CodigoSensor, FechaHora, Valor, RawRow)
-            VALUES ($1,$2,$3,$4,$5)
+            INSERT INTO sensor.Lecturas
+            (DispositivoID, SensorID, FechaHora, Valor, Calidad, RawRow)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            ON CONFLICT (DispositivoID, SensorID, FechaHora) DO NOTHING
             """,
             [
-                # Ajusta si tu esquema requiere Serie/CodigoSensor reales
-                (None, str(item.sensorid), item.fechahora, str(item.valor), None)
+                (
+                    item.dispositivoid,
+                    item.sensorid,
+                    item.fechahora,
+                    item.valor,
+                    item.calidad,
+                    None  # RawRow opcional, lo dejamos vacío
+                )
                 for item in lecturas
             ]
         )
 
-    # Procesamiento diferido (si lo tienes implementado así)
     background_tasks.add_task(
         models.get_chart_data,
         None, None,
@@ -99,8 +104,8 @@ async def insert_lecturas_batch(
         datetime.utcnow(),
         "hour"
     )
-    return {"inserted": len(lecturas)}
 
+    return {"inserted": len(lecturas)}
 #-----------------------------------------------------------------------------------------
 #-----------------------------------------------------------------------------------------
 # endpoint: recibe dict en configuracion
