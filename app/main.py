@@ -23,7 +23,9 @@ async def startup() -> None:
 async def shutdown() -> None:
     await close_db_pool()
 
-# Endpoint de salud
+#-----------------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------------
+# endpoint:
 @app.get("/health")
 async def health():
     try:
@@ -34,40 +36,28 @@ async def health():
         # No exponemos detalles internos en producción
         raise HTTPException(status_code=500, detail="DB check failed")
 
-
+#-----------------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------------
+# endpoint: recibe dict en configuracion
 @app.post("/devices", status_code=201)
 async def create_device(device: schemas.DeviceCreate):
     try:
-        device_id = await models.upsert_dispositivo(
-            device.serie, device.nombre, device.ubicacion,
-            device.tipo, device.firmware, device.configuracion
-        )
-        return {"dispositivoid": device_id}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
-    
-
-
-@app.post("/devices", status_code=201)
-async def create_device(device: schemas.DeviceCreate):
-    try:
-        # Convertimos el dict a JSON string
-        configuracion_json = json.dumps(device.configuracion) if device.configuracion else None
-
         device_id = await models.upsert_dispositivo(
             device.serie,
             device.nombre,
             device.ubicacion,
             device.tipo,
             device.firmware,
-            configuracion_json  # <-- enviamos string
+            device.configuracion  # <-- lo pasamos como dict
         )
         return {"dispositivoid": device_id}
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
 
-
+#-----------------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------------
+# endpoint:
 @app.post("/sensors", status_code=201)
 async def create_sensor(sensor: schemas.SensorCreate):
     sensor_id = await models.upsert_sensor(
@@ -77,6 +67,10 @@ async def create_sensor(sensor: schemas.SensorCreate):
     )
     return {"sensorid": sensor_id}
 
+
+#-----------------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------------
+# endpoint:
 @app.post("/lecturas/batch", status_code=201)
 async def insert_lecturas_batch(
     lecturas: List[schemas.LecturaCreate],
@@ -107,6 +101,10 @@ async def insert_lecturas_batch(
     )
     return {"inserted": len(lecturas)}
 
+#-----------------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------------
+# endpoint: recibe dict en configuracion
+
 @app.get("/charts")
 async def charts(
     dispositivoid: Optional[int] = None,
@@ -120,6 +118,9 @@ async def charts(
     data = await models.get_chart_data(dispositivoid, sensornombre, desde, hasta, bucket)
     return data
 
+#-----------------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------------
+# endpoint: recibe dict en configuracion
 @app.get("/export/lecturas")
 async def export_lecturas(limit: int = 10000, offset: int = 0):
     rows = await models.export_lecturas(limit=limit, offset=offset)
@@ -145,6 +146,9 @@ async def export_lecturas(limit: int = 10000, offset: int = 0):
         headers={"Content-Disposition": "attachment; filename=lecturas.csv"}
     )
 
+#-----------------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------------
 if __name__ == "__main__":
     uvicorn.run(
         "app.main:app",
