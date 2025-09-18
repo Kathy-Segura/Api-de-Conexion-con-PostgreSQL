@@ -40,7 +40,7 @@ async def register_user(payload: dict = Body(...)):
         raise HTTPException(status_code=400, detail="Usuario, correo y contraseña requeridos")
 
     hashed_password = auth.hash_password(password)  # devuelve str
-
+    
     async with acquire() as conn:
         try:
             user_id = await conn.fetchval("""
