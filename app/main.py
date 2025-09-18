@@ -28,96 +28,78 @@ async def shutdown() -> None:
 #-----------------------------------------------------------------------------------------
 #-----------------------------------------------------------------------------------------
 # endpoint:
+@app.post("/register", status_code=201)
+async def register_user(payload: dict = Body(...)):
+    username = payload.get("username")
+    email = payload.get("email")
+    password = payload.get("password")
+    rol_id = payload.get("rol_id", 2)  # por defecto rol usuario
+    activo = True
 
+    if not username or not email or not password:
+        raise HTTPException(status_code=400, detail="Usuario, correo y contraseña requeridos")
+
+    hashed_password = auth.hash_password(password)  # devuelve str
+
+    async with acquire() as conn:
+        try:
+            user_id = await conn.fetchval("""
+                INSERT INTO sensor.Usuarios (NombreUsuario, Correo, PasswordHash, RolID, Activo)
+                VALUES ($1, $2, $3, $4, $5)
+                RETURNING UsuarioID
+            """, username, email, hashed_password, rol_id, activo)
+
+            return {
+                "usuarioid": user_id,
+                "username": username,
+                "email": email
+            }
+        except Exception as e:
+            raise HTTPException(status_code=500, detail="Error registrando usuario")
+#-----------------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------------
+# endpoint:
 @app.post("/login")
 async def login_user(payload: dict = Body(...)):
     login_input = payload.get("login")
     password = payload.get("password")
-    
+
     if not login_input or not password:
-        raise HTTPException(status_code=400, detail="Usuario y contraseña requeridos")
-    
-    try:
-        async with acquire() as conn:
-            user = await conn.fetchrow("""
-                SELECT UsuarioID, NombreUsuario, Correo, PasswordHash, RolID, Activo
-                FROM sensor.Usuarios
-                WHERE NombreUsuario=$1 OR Correo=$1
-            """, login_input)
-
-            print("DEBUG: usuario fetchrow ->", user)  # <--- log temporal
-            
-            if not user:
-                raise HTTPException(status_code=401, detail="Usuario no encontrado")
-            if not user["Activo"]:
-                raise HTTPException(status_code=403, detail="Usuario inactivo")
-            
-            # Revisar qué tipo tiene PasswordHash
-            stored_hash = user["PasswordHash"]
-            print("DEBUG: tipo PasswordHash ->", type(stored_hash))  # <--- log temporal
-            
-            # Conversión segura
-            if isinstance(stored_hash, memoryview):
-                stored_hash = stored_hash.tobytes().decode('utf-8')
-            elif isinstance(stored_hash, bytes):
-                stored_hash = stored_hash.decode('utf-8')
-            
-            print("DEBUG: stored_hash ->", stored_hash[:20], "...")  # mostrar solo inicio
-            
-            if not auth.verify_password(password, stored_hash):
-                raise HTTPException(status_code=401, detail="Contraseña incorrecta")
-            
-            token = auth.create_access_token({
-                "sub": user["UsuarioID"],
-                "username": user["NombreUsuario"],
-                "rol": user["RolID"]
-            })
-            
-            return {"success": True, "token": token}
-    
-    except HTTPException:
-        raise
-    except Exception as e:
-        print("ERROR LOGIN:", traceback.format_exc())  # log completo del error
-        raise HTTPException(status_code=500, detail="Error interno del servidor")
-#-----------------------------------------------------------------------------------------
-#-----------------------------------------------------------------------------------------
-# endpoint:
-@app.post("/register")
-async def register_user(payload: dict = Body(...)):
-    name = payload.get("name")
-    email = payload.get("email")
-    phone = payload.get("phone")
-    password = payload.get("password")
-
-    if not all([name, email, phone, password]):
-        raise HTTPException(status_code=400, detail="Todos los campos son obligatorios")
-
-    password_hash = auth.hash_password(password)  # bcrypt seguro
+        raise HTTPException(status_code=400, detail="Usuario/correo y contraseña requeridos")
 
     async with acquire() as conn:
-        # Verificamos si ya existe usuario o correo
-        exists = await conn.fetchrow("""
-            SELECT 1 FROM sensor.Usuarios WHERE NombreUsuario=$1 OR Correo=$2
-        """, name, email)
-        if exists:
-            raise HTTPException(status_code=409, detail="Usuario o correo ya existe")
+        user = await conn.fetchrow("""
+            SELECT UsuarioID, NombreUsuario, Correo, PasswordHash, RolID, Activo
+            FROM sensor.Usuarios
+            WHERE NombreUsuario=$1 OR Correo=$1
+        """, login_input)
 
-        user_id = await conn.fetchval("""
-            INSERT INTO sensor.Usuarios (NombreUsuario, Correo, PasswordHash, RolID, Activo)
-            VALUES ($1, $2, $3, 2, TRUE)
-            RETURNING UsuarioID
-        """, name, email, password_hash)
+        if not user:
+            raise HTTPException(status_code=401, detail="Usuario no encontrado")
+        if not user["Activo"]:
+            raise HTTPException(status_code=403, detail="Usuario inactivo")
 
-        # Opcional: generar token automáticamente tras registro
+        stored_hash = user["passwordhash"]  # ya viene como str (TEXT en la DB)
+
+        if not auth.verify_password(password, stored_hash):
+            raise HTTPException(status_code=401, detail="Contraseña incorrecta")
+
         token = auth.create_access_token({
-            "sub": user_id,
-            "username": name,
-            "rol": 2
+            "sub": str(user["usuarioid"]),
+            "username": user["nombreusuario"],
+            "rol": user["rolid"]
         })
 
-        return {"success": True, "token": token}
-
+        return {
+            "success": True,
+            "token": token,
+            "user": {
+                "id": user["usuarioid"],
+                "username": user["nombreusuario"],
+                "email": user["correo"],
+                "rol": user["rolid"]
+            }
+        }
 
 #-----------------------------------------------------------------------------------------
 #-----------------------------------------------------------------------------------------

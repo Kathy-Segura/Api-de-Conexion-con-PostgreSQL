@@ -8,12 +8,11 @@ SECRET_KEY = os.getenv("SECRET_KEY", "change_this_secret_in_production")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
 
-def hash_password(plain: str) -> bytes:
-    return PWD_CTX.hash(plain).encode()
 
-def verify_password(plain: str, hashed: bytes) -> bool:
-    if isinstance(hashed, (bytes, bytearray)):
-        hashed = hashed.decode()
+def hash_password(plain: str) -> str:
+    return PWD_CTX.hash(plain)
+
+def verify_password(plain: str, hashed: str) -> bool:
     return PWD_CTX.verify(plain, hashed)
 
 def create_access_token(data: dict, expires_delta: timedelta | None = None):
@@ -28,3 +27,13 @@ def decode_access_token(token: str):
         return payload
     except JWTError:
         return None
+
+
+# hash de la pass por medio de bytea
+#def hash_password(plain: str) -> bytes:
+#    return PWD_CTX.hash(plain).encode()
+
+#def verify_password(plain: str, hashed: bytes) -> bool:
+#    if isinstance(hashed, (bytes, bytearray)):
+#        hashed = hashed.decode()
+#    return PWD_CTX.verify(plain, hashed)
