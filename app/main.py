@@ -7,6 +7,7 @@ from fastapi.responses import StreamingResponse, RedirectResponse
 from app.db import init_db_pool, close_db_pool, acquire
 from app import models, schemas, auth
 from fastapi import Body
+import traceback
 
 app = FastAPI(title="Plataforma Climática API")
 
@@ -27,36 +28,58 @@ async def shutdown() -> None:
 #-----------------------------------------------------------------------------------------
 #-----------------------------------------------------------------------------------------
 # endpoint:
+
 @app.post("/login")
 async def login_user(payload: dict = Body(...)):
-    email = payload.get("email")
+    login_input = payload.get("login")
     password = payload.get("password")
+    
+    if not login_input or not password:
+        raise HTTPException(status_code=400, detail="Usuario y contraseña requeridos")
+    
+    try:
+        async with acquire() as conn:
+            user = await conn.fetchrow("""
+                SELECT UsuarioID, NombreUsuario, Correo, PasswordHash, RolID, Activo
+                FROM sensor.Usuarios
+                WHERE NombreUsuario=$1 OR Correo=$1
+            """, login_input)
 
-    if not email or not password:
-        raise HTTPException(status_code=400, detail="Email y contraseña son requeridos")
-
-    async with acquire() as conn:
-        user = await conn.fetchrow("""
-            SELECT UsuarioID, NombreUsuario, PasswordHash, RolID, Activo
-            FROM sensor.Usuarios
-            WHERE Correo = $1
-        """, email)
-
-        if not user or not user["Activo"]:
-            raise HTTPException(status_code=401, detail="Usuario no encontrado o inactivo")
-
-        if not auth.verify_password(password, user["PasswordHash"]):
-            raise HTTPException(status_code=401, detail="Contraseña incorrecta")
-
-        # Generamos token JWT
-        token = auth.create_access_token({
-            "sub": user["UsuarioID"],
-            "username": user["NombreUsuario"],
-            "rol": user["RolID"]
-        })
-
-        return {"success": True, "token": token}
-
+            print("DEBUG: usuario fetchrow ->", user)  # <--- log temporal
+            
+            if not user:
+                raise HTTPException(status_code=401, detail="Usuario no encontrado")
+            if not user["Activo"]:
+                raise HTTPException(status_code=403, detail="Usuario inactivo")
+            
+            # Revisar qué tipo tiene PasswordHash
+            stored_hash = user["PasswordHash"]
+            print("DEBUG: tipo PasswordHash ->", type(stored_hash))  # <--- log temporal
+            
+            # Conversión segura
+            if isinstance(stored_hash, memoryview):
+                stored_hash = stored_hash.tobytes().decode('utf-8')
+            elif isinstance(stored_hash, bytes):
+                stored_hash = stored_hash.decode('utf-8')
+            
+            print("DEBUG: stored_hash ->", stored_hash[:20], "...")  # mostrar solo inicio
+            
+            if not auth.verify_password(password, stored_hash):
+                raise HTTPException(status_code=401, detail="Contraseña incorrecta")
+            
+            token = auth.create_access_token({
+                "sub": user["UsuarioID"],
+                "username": user["NombreUsuario"],
+                "rol": user["RolID"]
+            })
+            
+            return {"success": True, "token": token}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("ERROR LOGIN:", traceback.format_exc())  # log completo del error
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
 #-----------------------------------------------------------------------------------------
 #-----------------------------------------------------------------------------------------
 # endpoint:
