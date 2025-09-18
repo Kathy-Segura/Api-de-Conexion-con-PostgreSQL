@@ -69,24 +69,30 @@ async def login_user(payload: dict = Body(...)):
 
     async with acquire() as conn:
         user = await conn.fetchrow("""
-            SELECT UsuarioID, NombreUsuario, Correo, PasswordHash, RolID, Activo
+            SELECT 
+                UsuarioID      AS usuarioid,
+                NombreUsuario  AS username,
+                Correo         AS email,
+                PasswordHash   AS passwordhash,
+                RolID          AS rolid,
+                Activo         AS activo
             FROM sensor.Usuarios
             WHERE NombreUsuario=$1 OR Correo=$1
         """, login_input)
 
         if not user:
             raise HTTPException(status_code=401, detail="Usuario no encontrado")
-        if not user["Activo"]:
+        if not user["activo"]:
             raise HTTPException(status_code=403, detail="Usuario inactivo")
 
-        stored_hash = user["passwordhash"]  # ya viene como str (TEXT en la DB)
+        stored_hash = user["passwordhash"]
 
         if not auth.verify_password(password, stored_hash):
             raise HTTPException(status_code=401, detail="Contraseña incorrecta")
 
         token = auth.create_access_token({
             "sub": str(user["usuarioid"]),
-            "username": user["nombreusuario"],
+            "username": user["username"],
             "rol": user["rolid"]
         })
 
@@ -95,8 +101,8 @@ async def login_user(payload: dict = Body(...)):
             "token": token,
             "user": {
                 "id": user["usuarioid"],
-                "username": user["nombreusuario"],
-                "email": user["correo"],
+                "username": user["username"],
+                "email": user["email"],
                 "rol": user["rolid"]
             }
         }
