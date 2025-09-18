@@ -6,6 +6,7 @@ from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.responses import StreamingResponse, RedirectResponse
 from app.db import init_db_pool, close_db_pool, acquire
 from app import models, schemas, auth
+from fastapi import Body
 
 app = FastAPI(title="Plataforma Climática API")
 
@@ -22,6 +23,78 @@ async def startup() -> None:
 @app.on_event("shutdown")
 async def shutdown() -> None:
     await close_db_pool()
+
+#-----------------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------------
+# endpoint:
+@app.post("/login")
+async def login_user(payload: dict = Body(...)):
+    email = payload.get("email")
+    password = payload.get("password")
+
+    if not email or not password:
+        raise HTTPException(status_code=400, detail="Email y contraseña son requeridos")
+
+    async with acquire() as conn:
+        user = await conn.fetchrow("""
+            SELECT UsuarioID, NombreUsuario, PasswordHash, RolID, Activo
+            FROM sensor.Usuarios
+            WHERE Correo = $1
+        """, email)
+
+        if not user or not user["Activo"]:
+            raise HTTPException(status_code=401, detail="Usuario no encontrado o inactivo")
+
+        if not auth.verify_password(password, user["PasswordHash"]):
+            raise HTTPException(status_code=401, detail="Contraseña incorrecta")
+
+        # Generamos token JWT
+        token = auth.create_access_token({
+            "sub": user["UsuarioID"],
+            "username": user["NombreUsuario"],
+            "rol": user["RolID"]
+        })
+
+        return {"success": True, "token": token}
+
+#-----------------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------------
+# endpoint:
+@app.post("/register")
+async def register_user(payload: dict = Body(...)):
+    name = payload.get("name")
+    email = payload.get("email")
+    phone = payload.get("phone")
+    password = payload.get("password")
+
+    if not all([name, email, phone, password]):
+        raise HTTPException(status_code=400, detail="Todos los campos son obligatorios")
+
+    password_hash = auth.hash_password(password)  # bcrypt seguro
+
+    async with acquire() as conn:
+        # Verificamos si ya existe usuario o correo
+        exists = await conn.fetchrow("""
+            SELECT 1 FROM sensor.Usuarios WHERE NombreUsuario=$1 OR Correo=$2
+        """, name, email)
+        if exists:
+            raise HTTPException(status_code=409, detail="Usuario o correo ya existe")
+
+        user_id = await conn.fetchval("""
+            INSERT INTO sensor.Usuarios (NombreUsuario, Correo, PasswordHash, RolID, Activo)
+            VALUES ($1, $2, $3, 2, TRUE)
+            RETURNING UsuarioID
+        """, name, email, password_hash)
+
+        # Opcional: generar token automáticamente tras registro
+        token = auth.create_access_token({
+            "sub": user_id,
+            "username": name,
+            "rol": 2
+        })
+
+        return {"success": True, "token": token}
+
 
 #-----------------------------------------------------------------------------------------
 #-----------------------------------------------------------------------------------------
