@@ -23,87 +23,73 @@ async def startup():
 @app.on_event("shutdown")
 async def shutdown():
     await close_db_pool()
-
 logger = logging.getLogger(__name__)
+
+# ------------------- Helpers -------------------
 
 def _normalize_hash_from_db(h: Any) -> str:
     """
-    Normaliza el hash obtenido de la DB a un str (si es posible).
-    Si no puede decodificarse correctamente, se registra el error y lanzamos HTTP 500.
+    Normaliza el hash obtenido de la DB a un str legible por passlib.
     """
     if h is None:
-        logger.error("Hash en DB es None")
-        raise HTTPException(status_code=500, detail="Error interno leyendo hash de contraseña")
+        logger.error("PasswordHash en DB es NULL")
+        raise HTTPException(status_code=500, detail="Error interno: hash de contraseña inválido")
 
-    # memoryview -> bytes
     if isinstance(h, memoryview):
         h = h.tobytes()
 
-    # bytes -> try decode utf-8 (bcrypt/passlib hashes son ASCII)
     if isinstance(h, (bytes, bytearray)):
         try:
             return h.decode("utf-8")
         except Exception as ex:
             logger.exception("No se pudo decodificar PasswordHash desde DB: %s", ex)
-            raise HTTPException(status_code=500, detail="Error interno leyendo hash de contraseña")
+            raise HTTPException(status_code=500, detail="Error interno decodificando hash de contraseña")
 
-    # str -> ok
     if isinstance(h, str):
-        return h
+        return h.strip()
 
-    # cualquier otro tipo: intentar str() pero registrar
-    try:
-        s = str(h)
-        logger.warning("PasswordHash en DB tiene tipo inesperado %s, convertido a str", type(h))
-        return s
-    except Exception as ex:
-        logger.exception("Tipo inesperado para PasswordHash y no convertible: %s", ex)
-        raise HTTPException(status_code=500, detail="Error interno leyendo hash de contraseña")
+    logger.warning("PasswordHash en DB tiene tipo inesperado %s", type(h))
+    return str(h).strip()
 
 
 def _verify_password(plain_password: str, stored_hash_any: Any) -> bool:
     """
-    Verifica password con passlib (auth.verify_password). Asegura que stored_hash sea str.
-    Si ocurre un fallo inesperado en la verificación, registramos y devolvemos 500.
+    Verifica la contraseña en texto plano contra el hash usando passlib.
     """
     stored = _normalize_hash_from_db(stored_hash_any)
     try:
         return auth.verify_password(plain_password, stored)
     except Exception as ex:
-        logger.exception("Error verificando contraseña: %s", ex)
-        # No mostramos stack al cliente, devolvemos error interno:
+        logger.exception("Error inesperado verificando contraseña: %s", ex)
         raise HTTPException(status_code=500, detail="Error interno verificando contraseña")
-    
 
-# -------- REGISTER corregido (almacena username normalizado en minúsculas) --------
+# ------------------- ENDPOINTS -------------------
+
+# -------- REGISTER --------
 @app.post("/register", status_code=201)
 async def register_user(payload: dict = Body(...)):
     username_raw = (payload.get("username") or "").strip()
-    username = username_raw.lower()  # guardar en DB en minúsculas para unicidad case-insensitive
+    username = username_raw.lower()                # guardamos en minúsculas para evitar duplicados case-sensitive
     email = (payload.get("email") or "").strip().lower()
     password = payload.get("password")
-    try:
-        rol_id = int(payload.get("rol_id", 2))
-    except Exception:
-        rol_id = 2
+    rol_id = int(payload.get("rol_id", 2))
     activo = True
 
     if not username or not email or not password:
-        raise HTTPException(status_code=400, detail="Usuario, correo y contraseña requeridos")
+        raise HTTPException(status_code=400, detail="Usuario, correo y contraseña son requeridos")
 
     hashed_password = auth.hash_password(password)
-    # passlib devuelve str; si por alguna razón es bytes, lo convertimos (precaución)
     if isinstance(hashed_password, (bytes, memoryview)):
         try:
             hashed_password = hashed_password.decode("utf-8")
         except Exception:
-            logger.warning("hash_password devolvió bytes no decodificables; se guarda raw")
+            logger.warning("hash_password devolvió bytes no decodificables, se guarda tal cual")
 
     async with acquire() as conn:
-        # validar que rol exista para evitar FK violation
+        # validar que el rol exista
         role_exists = await conn.fetchval("SELECT 1 FROM sensor.Roles WHERE RolID=$1", rol_id)
         if not role_exists:
-            raise HTTPException(status_code=400, detail=f"RolID {rol_id} no existe")
+            raise HTTPException(status_code=400, detail=f"El RolID {rol_id} no existe")
 
         try:
             user_id = await conn.fetchval("""
@@ -111,27 +97,29 @@ async def register_user(payload: dict = Body(...)):
                 VALUES ($1, $2, $3, $4, $5)
                 RETURNING UsuarioID
             """, username, email, hashed_password, rol_id, activo)
-            return {"usuarioid": user_id, "username": username_raw, "email": email}
-        except pg_exc.UniqueViolationError as e:
-            logger.warning("Registro duplicado (unique violation): %s", e)
-            raise HTTPException(status_code=409, detail="Nombre de usuario o correo ya registrado")
-        except pg_exc.ForeignKeyViolationError as e:
-            logger.exception("FK error al registrar usuario: %s", e)
-            raise HTTPException(status_code=400, detail="Rol inválido")
-        except Exception as e:
-            logger.exception("Error registrando usuario: %s", e)
-            raise HTTPException(status_code=500, detail="Error registrando usuario")
 
+            return {
+                "usuarioid": user_id,
+                "username": username_raw,
+                "email": email
+            }
 
-# -------- LOGIN corregido (busca usando lower() para coincidir con almacenamiento) --------
+        except pg_exc.UniqueViolationError:
+            raise HTTPException(status_code=409, detail="El nombre de usuario o correo ya están registrados")
+        except pg_exc.ForeignKeyViolationError:
+            raise HTTPException(status_code=400, detail="Rol inválido, no cumple con la clave foránea")
+        except Exception as ex:
+            logger.exception("Error registrando usuario: %s", ex)
+            raise HTTPException(status_code=500, detail="Error interno al registrar usuario")
+
+# -------- LOGIN --------
 @app.post("/login")
 async def login_user(payload: dict = Body(...)):
-    login_input = (payload.get("login") or "").strip()
+    login_input = (payload.get("login") or "").strip().lower()
     password = payload.get("password")
-    if not login_input or not password:
-        raise HTTPException(status_code=400, detail="Usuario/correo y contraseña requeridos")
 
-    login_norm = login_input.lower()
+    if not login_input or not password:
+        raise HTTPException(status_code=400, detail="Usuario/correo y contraseña son requeridos")
 
     async with acquire() as conn:
         user = await conn.fetchrow("""
@@ -139,15 +127,14 @@ async def login_user(payload: dict = Body(...)):
                    PasswordHash AS passwordhash, RolID AS rolid, Activo AS activo
             FROM sensor.Usuarios
             WHERE lower(NombreUsuario)=$1 OR lower(Correo)=$1
-        """, login_norm)
+        """, login_input)
 
         if not user:
             raise HTTPException(status_code=401, detail="Usuario no encontrado")
         if not user["activo"]:
-            raise HTTPException(status_code=403, detail="Usuario inactivo")
+            raise HTTPException(status_code=403, detail="La cuenta está inactiva")
 
-        stored_hash = user["passwordhash"]
-        if not _verify_password(password, stored_hash):
+        if not _verify_password(password, user["passwordhash"]):
             raise HTTPException(status_code=401, detail="Contraseña incorrecta")
 
         token = auth.create_access_token({
@@ -155,6 +142,7 @@ async def login_user(payload: dict = Body(...)):
             "username": user["username"],
             "rol": user["rolid"]
         })
+
         return {
             "success": True,
             "token": token,
@@ -166,7 +154,6 @@ async def login_user(payload: dict = Body(...)):
             }
         }
     
-
 # -------- HEALTH CHECK --------
 @app.get("/health")
 async def health():
