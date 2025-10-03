@@ -95,19 +95,26 @@ async def health():
     except Exception:
         raise HTTPException(status_code=500, detail="DB check failed")
 
-# -------- DEVICES --------
+# endpoint: recibe dict en configuracion
 @app.post("/devices", status_code=201)
 async def create_device(device: schemas.DeviceCreate):
     try:
         device_id = await models.upsert_dispositivo(
-            device.serie, device.nombre, device.ubicacion, device.tipo,
-            device.firmware, device.configuracion
+            device.serie,
+            device.nombre,
+            device.ubicacion,
+            device.tipo,
+            device.firmware,
+            device.configuracion  # <-- lo pasamos como dict
         )
         return {"dispositivoid": device_id}
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
 
-# -------- SENSORS --------
+#-----------------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------------
+# endpoint:
 @app.post("/sensors", status_code=201)
 async def create_sensor(sensor: schemas.SensorCreate):
     sensor_id = await models.upsert_sensor(
@@ -117,19 +124,35 @@ async def create_sensor(sensor: schemas.SensorCreate):
     )
     return {"sensorid": sensor_id}
 
-# -------- LECTURAS BATCH --------
+
+#-----------------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------------
+# endpoint:
 @app.post("/lecturas/batch", status_code=201)
 async def insert_lecturas_batch(
     lecturas: List[schemas.LecturaCreate],
     background_tasks: BackgroundTasks
 ):
     async with acquire() as conn:
-        await conn.executemany("""
+        await conn.executemany(
+            """
             INSERT INTO sensor.Lecturas
             (DispositivoID, SensorID, FechaHora, Valor, Calidad, RawRow)
             VALUES ($1, $2, $3, $4, $5, $6)
             ON CONFLICT (DispositivoID, SensorID, FechaHora) DO NOTHING
-        """, [(l.dispositivoid, l.sensorid, l.fechahora, l.valor, l.calidad, None) for l in lecturas])
+            """,
+            [
+                (
+                    item.dispositivoid,
+                    item.sensorid,
+                    item.fechahora,
+                    item.valor,
+                    item.calidad,
+                    None  # RawRow opcional, lo dejamos vacío
+                )
+                for item in lecturas
+            ]
+        )
 
     background_tasks.add_task(
         models.get_chart_data,
@@ -138,7 +161,9 @@ async def insert_lecturas_batch(
         datetime.utcnow(),
         "hour"
     )
+
     return {"inserted": len(lecturas)}
+
 
 # -------- CHARTS --------
 @app.get("/charts")
