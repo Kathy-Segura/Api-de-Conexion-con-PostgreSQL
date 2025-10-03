@@ -3,11 +3,10 @@ import ssl
 import asyncio
 from typing import Optional
 from contextlib import asynccontextmanager
-
 import asyncpg
 from dotenv import load_dotenv
 
-load_dotenv()  # Carga variables desde .env
+load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 DB_POOL_MIN = int(os.getenv("DB_POOL_MIN", "1"))
@@ -17,28 +16,18 @@ DB_SSL_MODE = os.getenv("DB_SSL_MODE", "require").lower()
 
 pool: Optional[asyncpg.pool.Pool] = None
 
-
 def _build_ssl_context():
-    """
-    Neon requiere TLS. asyncpg no entiende 'sslmode' en el DSN,
-    así que construimos un SSLContext explícito.
-    """
     if DB_SSL_MODE in ("disable", "off", "false", "0"):
-        return False  
-    # verify-ca/verify-full -> validación de certs; default context ya valida CAs del sistema
+        return False
     ctx = ssl.create_default_context()
     return ctx
 
-
 async def init_db_pool(retries: int = 3, delay: int = 2):
-    """Inicializa el pool de conexiones con reintentos y setea el schema por defecto."""
     global pool
     if not DATABASE_URL:
         raise RuntimeError("DATABASE_URL no está definido en el .env")
-
     if pool is None:
         ssl_ctx = _build_ssl_context()
-
         for attempt in range(retries):
             try:
                 pool = await asyncpg.create_pool(
@@ -46,24 +35,21 @@ async def init_db_pool(retries: int = 3, delay: int = 2):
                     min_size=DB_POOL_MIN,
                     max_size=DB_POOL_MAX,
                     command_timeout=DB_TIMEOUT,
-                    timeout=30,  # tiempo máximo para conexión inicial
+                    timeout=30,
                     ssl=ssl_ctx,
-                    # Aquí agregamos la inicialización de search_path
                     init=lambda conn: conn.execute('SET search_path TO sensor')
                 )
-                # Smoke test inicial
                 async with pool.acquire() as conn:
-                   val = await conn.fetchval("SELECT schema_name FROM information_schema.schemata WHERE schema_name='sensor'")
-                   print("Existe schema sensor?", val)
-                break  # conexión OK, salir del bucle
-            
+                    val = await conn.fetchval("SELECT schema_name FROM information_schema.schemata WHERE schema_name='sensor'")
+                    print("Schema 'sensor' existe:", val)
+                break
             except Exception as e:
                 if attempt < retries - 1:
                     await asyncio.sleep(delay)
                 else:
                     raise e
-                
-                
+
+
 async def close_db_pool():
     """Cierra el pool de conexiones."""
     global pool

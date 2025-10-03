@@ -1,6 +1,6 @@
-from pydantic import BaseModel, EmailStr
 from typing import Optional
 from datetime import datetime
+from pydantic import BaseModel, EmailStr
 
 class Token(BaseModel):
     access_token: str
@@ -30,8 +30,8 @@ class SensorCreate(BaseModel):
     codigosensor: Optional[str] = None
     nombre: str
     unidad: str
-    factorescala: Optional[float] = 1.0
-    desplazamiento: Optional[float] = 0.0
+    factorescala: float = 1.0
+    desplazamiento: float = 0.0
     rangomin: Optional[float] = None
     rangomax: Optional[float] = None
 
