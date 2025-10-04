@@ -1,9 +1,9 @@
 import os
 import uvicorn
 import logging
-from typing import Any
+import json
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import List, Optional, Any
 from app import auth, models, schemas
 from asyncpg import exceptions as pg_exc
 from app.db import init_db_pool, close_db_pool, acquire
@@ -170,13 +170,23 @@ async def health():
 # -------- GET DEVICES --------
 @app.get("/devices", response_model=List[schemas.DeviceOut])
 async def get_devices():
-    async with acquire() as conn:
-        rows = await conn.fetch("""
-            SELECT DispositivoID AS dispositivoid, Serie, Nombre, Ubicacion, Tipo, Firmware, Configuracion
-            FROM sensor.Dispositivos
-            ORDER BY DispositivoID ASC
-        """)
-        return [dict(r) for r in rows]
+    try:
+        async with acquire() as conn:
+            rows = await conn.fetch("SELECT * FROM sensor.dispositivos ORDER BY dispositivoid")
+            dispositivos = []
+            for r in rows:
+                dispositivos.append({
+                    "dispositivoid": r["dispositivoid"],
+                    "serie": r["serie"],
+                    "nombre": r["nombre"],
+                    "ubicacion": r["ubicacion"],
+                    "tipo": r["tipo"],
+                    "firmware": r["firmware"],
+                    "configuracion": json.loads(r["configuracion"]) if r["configuracion"] else None
+                })
+            return dispositivos
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
     
 #-----------------------------------------------------------------------------------------
 #-----------------------------------------------------------------------------------------
