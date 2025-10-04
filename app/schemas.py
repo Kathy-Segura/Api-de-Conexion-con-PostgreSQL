@@ -41,3 +41,23 @@ class LecturaCreate(BaseModel):
     fechahora: datetime
     valor: float
     calidad: Optional[int] = 1
+
+class DeviceOut(BaseModel):
+    dispositivoid: int
+    serie: str
+    nombre: str
+    ubicacion: Optional[str]
+    tipo: Optional[str]
+    firmware: Optional[str]
+    configuracion: Optional[dict]
+
+class SensorOut(BaseModel):
+    sensorid: int
+    dispositivoid: int
+    codigosensor: Optional[str]
+    nombre: str
+    unidad: str
+    factorescala: float
+    desplazamiento: float
+    rangomin: Optional[float]
+    rangomax: Optional[float]    

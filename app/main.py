@@ -164,7 +164,23 @@ async def health():
     except Exception:
         raise HTTPException(status_code=500, detail="DB check failed")
 
-# endpoint: recibe dict en configuracion
+#-----------------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------------
+# endpoint:
+# -------- GET DEVICES --------
+@app.get("/devices", response_model=List[schemas.DeviceOut])
+async def get_devices():
+    async with acquire() as conn:
+        rows = await conn.fetch("""
+            SELECT DispositivoID AS dispositivoid, Serie, Nombre, Ubicacion, Tipo, Firmware, Configuracion
+            FROM sensor.Dispositivos
+            ORDER BY DispositivoID ASC
+        """)
+        return [dict(r) for r in rows]
+    
+#-----------------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------------
+# endpoint: 
 @app.post("/devices", status_code=201)
 async def create_device(device: schemas.DeviceCreate):
     try:
@@ -181,6 +197,23 @@ async def create_device(device: schemas.DeviceCreate):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
 
+
+#-----------------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------------
+# endpoint: recibe dict en configuracion
+# -------- GET SENSORS --------
+@app.get("/sensors", response_model=List[schemas.SensorOut])
+async def get_sensors():
+    async with acquire() as conn:
+        rows = await conn.fetch("""
+            SELECT SensorID AS sensorid, DispositivoID AS dispositivoid, CodigoSensor AS codigosensor,
+                   Nombre AS nombre, Unidad AS unidad, FactorEscala AS factorescala, Desplazamiento AS desplazamiento,
+                   RangoMin AS rangomin, RangoMax AS rangomax
+            FROM sensor.Sensores
+            ORDER BY SensorID ASC
+        """)
+        return [dict(r) for r in rows]
+    
 #-----------------------------------------------------------------------------------------
 #-----------------------------------------------------------------------------------------
 # endpoint:
@@ -192,7 +225,6 @@ async def create_sensor(sensor: schemas.SensorCreate):
         sensor.rangomin, sensor.rangomax
     )
     return {"sensorid": sensor_id}
-
 
 #-----------------------------------------------------------------------------------------
 #-----------------------------------------------------------------------------------------
