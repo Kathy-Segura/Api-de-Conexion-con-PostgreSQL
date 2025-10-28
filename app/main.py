@@ -7,7 +7,7 @@ from typing import List, Optional, Any
 from app import auth, models, schemas
 from asyncpg import exceptions as pg_exc
 from app.db import init_db_pool, close_db_pool, acquire
-from fastapi import FastAPI, HTTPException, Body, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Body, BackgroundTasks, APIRouter, Query
 from fastapi.responses import StreamingResponse, RedirectResponse
 
 app = FastAPI(title="Plataforma Climática API")
@@ -276,19 +276,48 @@ async def insert_lecturas_batch(
     return {"inserted": len(lecturas)}
 
 
-# -------- CHARTS --------
-@app.get("/charts")
-async def charts(
+@app.get("/lecturas", tags=["Lecturas"])
+async def get_lecturas(
     dispositivoid: Optional[int] = None,
-    sensornombre: Optional[str] = None,
-    desde: Optional[datetime] = None,
-    hasta: Optional[datetime] = None,
-    bucket: str = "hour"
+    sensorid: Optional[int] = None,
+    desde: Optional[datetime] = Query(None, description="Fecha inicial del rango"),
+    hasta: Optional[datetime] = Query(None, description="Fecha final del rango")
 ):
+    """
+    Retorna lecturas con filtros opcionales por dispositivo, sensor y rango de fechas.
+    Ejemplo: /lecturas?dispositivoid=1&desde=2025-10-01&hasta=2025-10-27
+    """
     desde = desde or (datetime.utcnow() - timedelta(days=7))
     hasta = hasta or datetime.utcnow()
-    data = await models.get_chart_data(dispositivoid, sensornombre, desde, hasta, bucket)
-    return data
+
+    query = """
+        SELECT lecturaid, dispositivoid, sensorid, fechahora, valor, calidad
+        FROM sensor.Lecturas
+        WHERE fechahora BETWEEN $1 AND $2
+    """
+    params = [desde, hasta]
+
+    if dispositivoid:
+        query += " AND dispositivoid = $3"
+        params.append(dispositivoid)
+    if sensorid:
+        query += f" AND sensorid = ${len(params) + 1}"
+        params.append(sensorid)
+
+    async with acquire() as conn:
+        rows = await conn.fetch(query, *params)
+
+    return [
+        {
+            "lecturaid": r["lecturaid"],
+            "dispositivoid": r["dispositivoid"],
+            "sensorid": r["sensorid"],
+            "fechahora": r["fechahora"].isoformat(),
+            "valor": r["valor"],
+            "calidad": r["calidad"],
+        }
+        for r in rows
+    ]
 
 # -------- EXPORT --------
 @app.get("/export/lecturas")
