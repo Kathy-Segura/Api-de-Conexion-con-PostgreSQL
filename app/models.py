@@ -62,13 +62,13 @@ async def upsert_sensor(
 async def export_lecturas(limit: int = 10000, offset: int = 0):
     async with acquire() as conn:
         rows = await conn.fetch("""
-            SELECT LecturaID, DispositivoID, SensorID, FechaHora, Valor, Calidad, RawRow, InsertedAt
+            SELECT LecturaID, DispositivoID, SensorID, FechaHora, Temperatura, Humedad, Calidad, InsertedAt
             FROM sensor.Lecturas
             ORDER BY FechaHora DESC
             LIMIT $1 OFFSET $2
         """, limit, offset)
         return [dict(r) for r in rows]
-
+    
 
 async def get_chart_data(dispositivoid: Optional[int], sensornombre: Optional[str], desde, hasta, bucket: str='hour'):
     async with acquire() as conn:

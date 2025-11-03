@@ -248,7 +248,7 @@ async def insert_lecturas_batch(
         await conn.executemany(
             """
             INSERT INTO sensor.Lecturas
-            (DispositivoID, SensorID, FechaHora, Valor, Calidad, RawRow)
+            (DispositivoID, SensorID, FechaHora, Temperatura, Humedad, Calidad)
             VALUES ($1, $2, $3, $4, $5, $6)
             ON CONFLICT (DispositivoID, SensorID, FechaHora) DO NOTHING
             """,
@@ -257,7 +257,8 @@ async def insert_lecturas_batch(
                     item.dispositivoid,
                     item.sensorid,
                     item.fechahora,
-                    item.valor,
+                    item.temperatura,
+                    item.humedad,
                     item.calidad,
                     None  # RawRow opcional, lo dejamos vacío
                 )
@@ -283,15 +284,12 @@ async def get_lecturas(
     desde: Optional[datetime] = Query(None, description="Fecha inicial del rango"),
     hasta: Optional[datetime] = Query(None, description="Fecha final del rango")
 ):
-    """
-    Retorna lecturas con filtros opcionales por dispositivo, sensor y rango de fechas.
-    Ejemplo: /lecturas?dispositivoid=1&desde=2025-10-01&hasta=2025-10-27
-    """
+
     desde = desde or (datetime.utcnow() - timedelta(days=7))
     hasta = hasta or datetime.utcnow()
 
     query = """
-        SELECT lecturaid, dispositivoid, sensorid, fechahora, valor, calidad
+        SELECT lecturaid, dispositivoid, sensorid, fechahora, temperatura, humedad, calidad
         FROM sensor.Lecturas
         WHERE fechahora BETWEEN $1 AND $2
     """
@@ -313,7 +311,8 @@ async def get_lecturas(
             "dispositivoid": r["dispositivoid"],
             "sensorid": r["sensorid"],
             "fechahora": r["fechahora"].isoformat(),
-            "valor": r["valor"],
+            "temperatura": r["temperatura"],
+            "humedad": r["humedad"],
             "calidad": r["calidad"],
         }
         for r in rows
@@ -327,11 +326,11 @@ async def export_lecturas(limit: int = 10000, offset: int = 0):
     def iter_csv():
         output = io.StringIO()
         writer = csv.writer(output)
-        writer.writerow(["LecturaID","FechaHora","Valor","Calidad","DispositivoID","SensorID"])
+        writer.writerow(["LecturaID","FechaHora","Temperatura","Humedad","Calidad","DispositivoID","SensorID"])
         yield output.getvalue()
         output.seek(0); output.truncate(0)
         for r in rows:
-            writer.writerow([r["lecturaid"], r["fechahora"], r["valor"], r["calidad"], r["dispositivoid"], r["sensorid"]])
+            writer.writerow([r["lecturaid"], r["fechahora"], r["temperatura"], r["humedad"], r["calidad"], r["dispositivoid"], r["sensorid"]])
             yield output.getvalue()
             output.seek(0); output.truncate(0)
     return StreamingResponse(iter_csv(), media_type="text/csv", headers={"Content-Disposition":"attachment; filename=lecturas.csv"})

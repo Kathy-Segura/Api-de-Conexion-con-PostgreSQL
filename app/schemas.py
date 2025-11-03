@@ -39,7 +39,8 @@ class LecturaCreate(BaseModel):
     dispositivoid: int
     sensorid: int
     fechahora: datetime
-    valor: float
+    temperatura: Optional[float] = None
+    humedad: Optional[float] = None
     calidad: Optional[int] = 1
 
 class DeviceOut(BaseModel):
