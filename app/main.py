@@ -259,8 +259,7 @@ async def insert_lecturas_batch(
                     item.fechahora,
                     item.temperatura,
                     item.humedad,
-                    item.calidad,
-                    None  # RawRow opcional, lo dejamos vacío
+                    item.calidad
                 )
                 for item in lecturas
             ]
